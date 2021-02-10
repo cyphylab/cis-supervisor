@@ -1,0 +1,3 @@
+[submodule "cis2m"]
+	path = cis2m
+	url = https://github.com/janis10/cis2m.git
