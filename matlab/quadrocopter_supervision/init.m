@@ -20,6 +20,6 @@ addpath('./Simulink/Functions/Quaternion/');
 
 addpath('../Library');
 addpath('../Library/traj_helpers');
-addpath('../../../cis2m');
-addpath('../../../cis2m/algorithms');
-addpath('../../../cis2m/support_functions');
+addpath('../../cis2m');
+addpath('../../cis2m/algorithms');
+addpath('../../cis2m/support_functions');
