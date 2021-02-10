@@ -1,4 +1,4 @@
-function [sim_output] = SystemSimulation(DSets, mdl, K, x0, trajectory, Tend, dt)
+function [sim_output] = SystemSimulation(DSets, mdl, K, x0, trajectory, Tend, dt, method)
 
 Nsim = Tend/dt;             % simulation steps
 
@@ -36,18 +36,19 @@ for step = 1 : Nsim
     err = x_ref - x_curr;                           % trajectory error
     sim_output.E_sim(step, :) = err;
     u_des = ctrl_fun(K, err) + trj_jrk;             % nominal input
-    
     sim_output.U_nom(step, :) = u_des;
+    
     % Check if nominal input is NaN
     if (isnan(u_des))
         disp(step);
         disp(Nsim);
         error("Nominal input is NaN!");
     end
+    
     x_next_des = Ad * x_curr + Bd * u_des;    % nominal next state
     
     % Check if the nominal next state belongs to the CIS.
-    [guard, ~] = isContained(x_next_des,DSets,[]);
+    [guard, ~] = isContained(x_next_des, DSets, []);
     % If desired next state belongs to the CIS we are good:
     if (guard)
         x_curr = x_next_des;
@@ -61,41 +62,42 @@ for step = 1 : Nsim
         u_cand = zeros(size(Bd,2), Nsets);  % candidate input
         f_cand = zeros(1, Nsets);           % candidate optimal cost
         for k = 1:Nsets
-            %             % CIS inequalitites:
-            %             cisA = DSets{k}.CIS.A;
-            %             cisb = DSets{k}.CIS.b;
+            % CIS inequalitites:
+            %             cisA = DSets{k}.RCIS.A;
+            %             cisb = DSets{k}.RCIS.b;
             %             Gu = DSets{k}.inputA;
             %             Fu = DSets{k}.inputb;
             %             % wrt to u:
-            %             Aineq = [cisA * Bd; Gu];
-            %             bineq = [cisb - cisA * Ad * x_curr; Fu];
-            %             box1 = Polyhedron('H',[Aineq bineq]);
-            %             box1 = box1.minHRep;
+            %             Aineq = [rcisA * Bd; Gu];
+            %             bineq = [rcisb - rcisA * Ad * x_curr; Fu];
             
             % For the quadrocopter, the CIS inequalities wrt u
             % are simplified to box constraints:
-            [lb,ub] = simplify2box(x_curr,DSets{k},mdl);
+            [lb,ub] = simplify2box(x_curr, DSets{k}, mdl);
             
-%             % Approach 1: use a solver:
-%             Aineq = [-eye(length(lb)); eye(length(ub))];
-%             bineq = [-lb; ub];
-%             % Cost: || u - udes ||^2.
-%             H = eye(size(Bd,2));
-%             c = -2 * u_des;
-%             % Call solver:
-%             result = solveGurobiQP(H, c, Aineq, bineq);
-%             
-%             if (strcmp(result.status,'OPTIMAL')==1)
-%                 u_cand(:, k) = result.x;
-%                 f_cand(k) = result.objval + norm(u_des)^2;
-%             else
-%                 u_cand(:, k) = NaN*ones(size(Aineq,2),1);
-%                 f_cand(k) = NaN;
-%             end
-            
-            % Approach 2: Euclidean projection on a box has analytical
-            % solution:
-            [u_cand(:,k), f_cand(k)] = project2box(lb, ub, u_des);
+            if (method==1)
+                % Approach 1: use a solver:
+                Aineq = [-eye(length(lb)); eye(length(ub))];
+                bineq = [-lb; ub];
+                % Cost: || u - udes ||^2.
+                H = eye(size(Bd,2));
+                c = -2 * u_des;
+                % Call solver:
+                result = solveGurobiQP(H, c, Aineq, bineq);
+                
+                if (strcmp(result.status,'OPTIMAL')==1)
+                    u_cand(:, k) = result.x;
+                    f_cand(k) = result.objval + norm(u_des)^2;
+                else
+                    u_cand(:, k) = NaN*ones(size(Aineq,2),1);
+                    f_cand(k) = NaN;
+                end
+            else
+                
+                % Approach 2: Euclidean projection on a box has analytical
+                % solution:
+                [u_cand(:,k), f_cand(k)] = project2box(lb, ub, u_des);
+            end
         end
         
         % Sanity check:
@@ -115,21 +117,19 @@ for step = 1 : Nsim
         % Make sure that next state is indeed in the next cis:
         x_next = Ad * x_curr + Bd * u_corrected;
         %         guard = DSets{next_cis}.Polyhedron.contains(x_next);
-        if (~isContained(x_next,DSets,[]))
+        if (~isContained(x_next, DSets, []))
             disp(step);
             disp(Nsim);
-            %             cisA = DSets{next_cis}.CIS.A;
-            %             cisb = DSets{next_cis}.CIS.b;
-            %             sat = (cisA * x_next <= cisb);
-            %             idcs = find(sat==0);
-            %             diff = abs(cisA(idcs,:) * x_next - cisb(idcs));
+            cisA = DSets{next_cis}.CIS.A;
+            cisb = DSets{next_cis}.CIS.b;
+            sat = (cisA * x_next <= cisb);
+            idcs = find(sat==0);
+            diff = abs(cisA(idcs,:) * x_next - cisb(idcs));
+            disp(diff)
             error("Next state not in a CIS!");
         end
         % Update state:
         x_curr = x_next;
-        
-        %Nsim = Tend/dt;
-        %trajectory.generate(x_curr, xT, Tend); % - step*dt);
     end
     
 end

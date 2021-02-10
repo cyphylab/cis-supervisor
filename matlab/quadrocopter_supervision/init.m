@@ -1,4 +1,4 @@
-% Testing script.
+% Add required paths.
 %
 %
 % Classes:
@@ -20,6 +20,6 @@ addpath('./Simulink/Functions/Quaternion/');
 
 addpath('../Library');
 addpath('../Library/traj_helpers');
-addpath('../Library/cis2m_multi');
-addpath('../Library/cis2m_multi/algorithms');
-addpath('../Library/cis2m_multi/support_functions');
+addpath('../../../cis2m');
+addpath('../../../cis2m/algorithms');
+addpath('../../../cis2m/support_functions');

@@ -20,7 +20,7 @@
 #include <vector>
 #include <string>
 #include "gurobi_c++.h"
-#include </Users/j10/prog-libs/eigen-3.3.9/Eigen/Dense>
+#include <eigen-3.3.9/Eigen/Dense>
 
 using namespace std;
 using namespace Eigen;
@@ -88,11 +88,11 @@ opt_result solveGurobi(MatrixXd H, VectorXd c, MatrixXd Aineq, VectorXd bineq, i
         // Add constraints:
         addConstrsGRB(model, Aineq, bineq, u);
 
-        // Optimize model
+        // Optimize model:
         model.optimize();
         // Comment out for debugging:
-//        model.update();
-//        model.write("debug.lp");
+        // model.update();
+        // model.write("debug.lp");
         
         VectorXd sol(u.size());
         for (int i=0; i<u.size(); i++)

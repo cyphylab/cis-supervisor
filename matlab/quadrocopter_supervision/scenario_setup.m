@@ -1,6 +1,6 @@
 %% Initialize:
-init;           % clear variables, set paths. 
-dt = 0.05; %125;      % set sampling time.
+init;               % clear variables, set paths. 
+dt = 0.10; %125;    % set sampling time.
 
 % Define vehicle constraints and return the flat output model.
 % mdl_dt: discrete time model
@@ -27,9 +27,12 @@ safe_distance = 0.5;
 L = 6; T = 0;
 DSets = cell(length(Sp),1);
 
-Ed = [1;1;1;0;0;0;0;0;0];
-Gw = [1;-1];
-Fw = [1e-3; 1e-3];
+% Define disturbance:
+k = mdl_dt.Nx;
+Ed = eye(k);
+Gw = [eye(k); -eye(k)];
+Fw = 1e-2 * [ones(k,1); ones(k,1)];
+W = Polyhedron('H', [Gw Fw]);
 parfor i = 1:length(Sp)
     safeA = [G_state; [Sp(i).A zeros(size(Sp(i).A,1),6)]];
     safeb = [F_state; Sp(i).b];
@@ -39,18 +42,15 @@ parfor i = 1:length(Sp)
     cis = Polyhedron('H', [cisA, cisb]);
     cis = cis.minHRep;  % if computing all offline, remove redundant ineqs.
     
-%     % Comment out for debugging:
-%     UU = Polyhedron('H',[G_u F_u]);
-%     if (~isInvariant(cis,UU,[],mdl_dt.Ad,mdl_dt.Bd))
-%         warning('Result not numerically invariant.');
-%     else
-%         disp('Invariant in original space!')
-%     end
+    % This is to be used for the optimization problem:
+    % Ax + Bu + E W \subseteq CIS <-> Ax + Bu \subseteq CIS - E W
+    % <-> Ax + Bu \in RCIS.
+    rcis = cis - Ed * W;
     
     DSets{i} = struct('Index', i, ...
         'SafeSet', Polyhedron('H', [safeA, safeb]), ...
         'inputA', G_u, 'inputb', F_u, ...
-        'CIS', cis);    
+        'CIS', cis, 'RCIS', rcis);    
 end
 % Check for CIS emptiness:
 for k = 1:length(DSets)
@@ -65,9 +65,9 @@ clear cis cisA cisb safeA safeb i k
 % Using trajectory class
 % Start from p_s with zero velocity and acceleration. 
 % Arrive at p_f with zero velocity and acceleration. 
-% In Tend seconds (??). 
-p_s = [-1.0, -1.0, 0.0]';
-p_f = [2.5, 2.0, 0.45]';
+% In Tend seconds. 
+p_s = [-1.5, -1.0, 0.0]';
+p_f = [2.5, 2.0, 0.0]';
 Tend = 20;
 % Instantiate a Trajectory generator of degree 6.
 trajectory = TrajectoryClass(6);
@@ -102,9 +102,14 @@ K_disc = place(mdl_dt.Ad_1d, mdl_dt.Bd_1d, pDisc);
 
 Plant_dt = ss(mdl_dt.Ad_1d, mdl_dt.Bd_1d, eye(3), []);
 
+%% Initialize the Simulink environment:
+InitSimulink;
+
 %% Plot Simulink output:
 figure;
 sim_output = out;
+
+% Plot corrected trajectory:
 plot3(sim_output.X_sim(:, 1), sim_output.X_sim(:, 2), sim_output.X_sim(:, 3),'LineWidth',3.5);
 hold on;
 grid on;
@@ -112,6 +117,8 @@ axis equal;
 xlabel("x");
 ylabel("y");
 zlabel("z");
+
+% Plot obstacles and start/finish points:
 for i = 1:length(Obs)
     plot(Obs(i),'color',[0.6350 0.0780 0.1840],'alpha',0.3);
     cisA = Obs(i).chebyCenter();
@@ -121,9 +128,11 @@ plot3(x0(1),x0(2),x0(3),'s','Color','magenta','LineWidth',2.5);
 text(x0(1),x0(2),x0(3),'\leftarrow start','FontSize',14);
 plot3(xT(1),xT(2),xT(3),'o','Color','green','LineWidth',2.5);
 text(xT(1),xT(2),xT(3),'\leftarrow finish','FontSize',14);
+
 xlim([-3,3]);
 ylim([-3,3]);
 
+% Plot nominal trajectory:
 Nsim = Tend/dt;             % simulation steps
 trj_pos = [];
 for step = 1 : Nsim

@@ -1,15 +1,15 @@
-function [lb, ub] = simplify2box(x0,DSet,mdl)
+function [lb, ub] = simplify2box(x0, DSet, mdl)
 abs_tol = 1e-10; % absolute tolerance for checking containment.
 
 Ad = mdl.Ad;
 Bd = mdl.Bd;
-cisA = DSet.CIS.A;
-cisb = DSet.CIS.b;
+rcisA = DSet.RCIS.A;
+rcisb = DSet.RCIS.b;
 Gu = DSet.inputA;
 Fu = DSet.inputb;
 
-Aineq = [cisA*Bd; Gu];
-bineq = [cisb - cisA*Ad*x0; Fu];
+Aineq = [rcisA*Bd; Gu];
+bineq = [rcisb - rcisA*Ad*x0; Fu];
 
 % Normalize by the non-zero value of each row:
 guard = 0;

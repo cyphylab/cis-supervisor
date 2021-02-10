@@ -22,7 +22,7 @@
 #include "gurobiRoutines.h"
 #include "simulationClasses.h"
 #include "supervisionRoutines.h"
-#include </Users/j10/prog-libs/eigen-3.3.9/Eigen/Dense>
+#include <eigen-3.3.9/Eigen/Dense>
 
 using namespace std;
 using namespace Eigen;
@@ -53,49 +53,79 @@ M load_csv (const string & path) {
     return Map<const Matrix<typename M::Scalar, M::RowsAtCompileTime, M::ColsAtCompileTime, RowMajor>>(values.data(), rows, values.size()/rows);
 }
 
-int main(){
-    // ///////////////////////////////////////////////////////////////////////////////////////////////////
-    // LOAD DATA FROM FILES:
+// Load Struct:
+struct load_data
+{
+    model mdl;
+    trajectory traj;
+    vector<polytope> CISs;
+    vector<polytope> RCISs;
+    polytope inputSet;
+    VectorXd x0;
+    // Constructor:
+    load_data(model mdl, trajectory traj, vector<polytope> CISs, vector<polytope> RCISs, polytope inputSet, VectorXd x0) : mdl(mdl), traj(traj), CISs(CISs), RCISs(RCISs), inputSet(inputSet), x0(x0) {};
+};
+
+load_data load_from_files(){
     // Load model:
     MatrixXd Ad, Bd;
-    Ad = load_csv<MatrixXd>("/Users/j10/Downloads/CIS/quadrocopter_supervision/cpp/gurobi_test/data/Ad.csv");
-    Bd = load_csv<MatrixXd>("/Users/j10/Downloads/CIS/quadrocopter_supervision/cpp/gurobi_test/data/Bd.csv");
+    Ad = load_csv<MatrixXd>("../data/quadrocopter_supervision/Ad.csv");
+    Bd = load_csv<MatrixXd>("../data/quadrocopter_supervision/Bd.csv");
     model mdl(Ad.cols(), Bd.cols(), Ad, Bd);
     // Create trajectory struct:
     MatrixXd traj_state, traj_input;
     double dt = 0.05;
     int NSim = 1000;
     VectorXd K(3);
-    K << 58.191666446869746, 43.645601896558645, 10.883765107576760;
+    K << 58, 43, 10;
     // Load trajectory:
-    traj_state = load_csv<MatrixXd>("/Users/j10/Downloads/CIS/quadrocopter_supervision/cpp/gurobi_test/data/traj_state.csv");
-    traj_input = load_csv<MatrixXd>("/Users/j10/Downloads/CIS/quadrocopter_supervision/cpp/gurobi_test/data/traj_input.csv");
+    traj_state = load_csv<MatrixXd>("../data/quadrocopter_supervision/traj_state.csv");
+    traj_input = load_csv<MatrixXd>("../data/quadrocopter_supervision/traj_input.csv");
     trajectory traj(mdl.Nx, mdl.Nu, dt, NSim, K);
     // Populate trajectory struct:
     for (int i=0; i<NSim; i++){
         traj.add_state(traj_state.col(i),i);
         traj.add_input(traj_input.col(i),i);
     }
-    // Load CISs:
+    // Load CISs + RCISs for supervision:
     vector<polytope> CISs;
     MatrixXd cisA, cisb;
     for (int i=0; i<9; i++){
-        string filename = "/Users/j10/Downloads/CIS/quadrocopter_supervision/cpp/gurobi_test/data/cis"+to_string(i);
+        string filename = "../data/cis"+to_string(i);
         cisA = load_csv<MatrixXd>(filename+"_A.csv");
         cisb = load_csv<MatrixXd>(filename+"_b.csv");
         polytope CIS(cisA, cisb);
         CISs.push_back(CIS);
+
+        filename = "../data/rcis"+to_string(i);
+        rcisA = load_csv<MatrixXd>(filename+"_A.csv");
+        rcisb = load_csv<MatrixXd>(filename+"_b.csv");
+        polytope RCIS(rcisA, rcisb);
+        RCISs.push_back(RCIS);
     }
     // Load input constraints:
     MatrixXd Gu, Fu;
-    Gu = load_csv<MatrixXd>("/Users/j10/Downloads/CIS/quadrocopter_supervision/cpp/gurobi_test/data/inputA.csv");
-    Fu = load_csv<MatrixXd>("/Users/j10/Downloads/CIS/quadrocopter_supervision/cpp/gurobi_test/data/inputb.csv");
-    polytope inputConstr(Gu,Fu);
+    Gu = load_csv<MatrixXd>("../data/quadrocopter_supervision/inputA.csv");
+    Fu = load_csv<MatrixXd>("../data/quadrocopter_supervision/inputb.csv");
+    polytope inputSet(Gu, Fu);
     // Initial state:
     VectorXd x0(9);
     x0 << -2.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
-    // ///////////////////////////////////////////////////////////////////////////////////////////////////
-    // ///////////////////////////////////////////////////////////////////////////////////////////////////
+
+    load_data data(mdl, traj, CISs, RCISs, inputSet, x0);
+    return data;
+}
+
+int main(){
+    // Load data from files:
+    load_data data = load_from_files();
+    model mdl = data.mdl;
+    trajectory traj = data.traj;
+    vector<polytope> CISs = data.CISs;
+    vector<polytope> RCISs = data.RCISs;
+    polytope inputSet = data.inputSet;
+    VectorXd x0 = data.x0;
+    
     // SIMULATION:
     
     // Create simulation struct:
@@ -112,10 +142,10 @@ int main(){
         VectorXd u_des = traj.nominalInput(step, err);      // nominal input.
         sim.add_Unom(u_des);                                // store nominal input.
         
-        VectorXd x_next_des = mdl.Ad*x_curr + mdl.Bd*u_des; //  nominal next state
+        VectorXd x_next_des = mdl.Ad * x_curr + mdl.Bd * u_des; //  nominal next state
         // Check if the nominal next state belongs to the CIS.
         // If desired next state belongs to the CIS we are good:
-        if (isContained(x_next_des,CISs)){
+        if (isContained(x_next_des, CISs)){
             x_curr = x_next_des;
             sim.add_Ucorr(u_des);
         }
@@ -124,13 +154,13 @@ int main(){
             cout << "Correcting.. step: " << step << "." << endl;
             sim.add_Supervision(step);
             // We solve for the union of CISs by checking if there exists a next state in any of the CISs separately:
-            int Nsets = CISs.size();
+            int Nsets = RCISs.size();
             MatrixXd u_cand(mdl.Nu, Nsets); // candidate input
             VectorXd f_cand(Nsets);         // candidate optimal cost
             // For each CIS..
             for (int k = 0; k < Nsets; k++){
                 //..call the supervisor:
-                pair<double, VectorXd> res = callSupervisor(x_curr, u_des, mdl, CISs[k], inputConstr);
+                pair<double, VectorXd> res = callSupervisor(x_curr, u_des, mdl, RCISs[k], inputSet);
                 f_cand(k) = res.first;
                 u_cand.col(k) = res.second;
             }
@@ -138,7 +168,7 @@ int main(){
             // Sanity check -- we must have at least one solution:
             if (f_cand.minCoeff()==__DBL_MAX__){
                 cout << "Step: " << step << ", out of: " << sim.get_len() << endl;
-                cout << "All the optimizations failed.." << endl;
+                cout << "All optimizations failed.." << endl;
                 exit(-1);
             }
 
@@ -172,7 +202,7 @@ int main(){
     vector<VectorXd> X = sim.get_X();
     cout << X[0] << endl;
     cout << X.back() << endl;
-//    writeToCSVfile("fulltrajectory.csv", X);
+    writeToCSVfile("fulltrajectory.csv", X);
 
     
     return 0;
