@@ -14,3 +14,6 @@ end
 
 writematrix(mdl_dt.Ad, "../../data/Ad.csv");
 writematrix(mdl_dt.Bd, "../../data/Bd.csv");
+
+writematrix(inputA, "../../data/G_u.csv");
+writematrix(inputB, "../../data/F_u.csv");
