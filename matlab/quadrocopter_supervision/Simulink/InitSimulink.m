@@ -1,6 +1,4 @@
 %Initialization Script
-clc;
-
 RAD2DEG = 180 / pi;
 
 % Sample times
