@@ -1,6 +1,21 @@
 % Import Experiment data
 import_experimentdata;
 
+
+%%
+%{
+The data from the experiment contains:
+Commanded jerk in body frame body: jerk_body
+Commanded thrust: thrust
+Commanded yaw rate: yaw_rate
+Commanded angular velocity in body frame: ang_velocity
+Current flat output state of the drone: state_curr 
+Predicted flat output state of the drone: state_pred 
+Active Supervision Flag: active
+
+Matlab imports those filed as "field<nameofthefield>".
+%}
+
 time = experiment.time / 1e9;
 N = length(time);
 
